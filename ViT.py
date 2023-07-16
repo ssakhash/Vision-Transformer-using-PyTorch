@@ -1,18 +1,22 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from tqdm import tqdm
 
 class Config:
     img_size = 32
     patch_size = 4
     num_classes = 100
-    dim = 64
-    depth = 6
-    heads = 8
-    mlp_dim = 128
+    dim = 128
+    depth = 8
+    heads = 16
+    mlp_dim = 256
     channels = 3
     dropout = 0.1
+    weight_decay = 0.01  # L2 regularization
 
 class TransformerBlock(nn.Module):
     def __init__(self, dim, heads, dropout, forward_expansion):
@@ -40,8 +44,6 @@ class VisionTransformer(nn.Module):
     def __init__(self, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, channels, dropout):
         super(VisionTransformer, self).__init__()
 
-        self.image_size = image_size
-        self.patch_size = patch_size
         self.num_patches = (image_size // patch_size) ** 2
         self.dim = dim
         self.depth = depth
@@ -59,10 +61,10 @@ class VisionTransformer(nn.Module):
         self.mlp_head = nn.Linear(dim, num_classes)
 
     def forward(self, x):
-        x = self.patch_embedding(x).flatten(2).transpose(1, 2)  
+        x = self.patch_embedding(x).flatten(2).transpose(1, 2)
         batch_size = x.shape[0]
-        class_token = self.class_token.expand(batch_size, -1, -1)  
-        x = torch.cat((class_token, x), dim=1)  
+        class_token = self.class_token.expand(batch_size, -1, -1)
+        x = torch.cat((class_token, x), dim=1)
         x = x + self.position_embedding
         x = self.dropout(x)
 
@@ -74,32 +76,47 @@ class VisionTransformer(nn.Module):
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("GPU: ", torch.cuda.get_device_name(torch.device))
 
     # Data loading and preprocessing
-    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform)
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),  # Data augmentation - random crop
+        transforms.RandomHorizontalFlip(),  # Data augmentation - random horizontal flip
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=100, shuffle=True, num_workers=2)
 
-    model = VisionTransformer(Config.img_size, Config.patch_size, Config.num_classes, Config.dim, Config.depth, Config.heads, Config.mlp_dim, Config.channels, Config.dropout).to(device)
+    model = VisionTransformer(
+        Config.img_size,
+        Config.patch_size,
+        Config.num_classes,
+        Config.dim,
+        Config.depth,
+        Config.heads,
+        Config.mlp_dim,
+        Config.channels,
+        Config.dropout
+    ).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=Config.weight_decay)  # Lower learning rate and added weight decay
+    scheduler = ReduceLROnPlateau(optimizer, 'min')  # New learning rate scheduler
 
     # Training loop
-    for epoch in range(10): 
-        for i, data in enumerate(trainloader, 0):
+    for epoch in range(20):  # Add tqdm for epoch progress
+        for i, data in enumerate(tqdm(trainloader, 0)):  # Add tqdm for batch progress within each epoch
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
-            
             optimizer.zero_grad()
-            
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-        
-        print(f"Epoch {epoch + 1}, Loss: {loss.item()}")
 
+        scheduler.step(loss)  # Updated to use ReduceLROnPlateau scheduler
+        print(f"Epoch {epoch + 1}, Loss: {np.round(loss.item(), 3)}")
     print('Finished Training')
 
 if __name__ == "__main__":
