@@ -21,7 +21,7 @@ pip install torch torchvision
 ## Usage
 Clone this repository:
 ```sh
-git clone https://github.com/yourusername/vision-transformer.git](https://github.com/ssakhash/Vision-Transformer-from-Scratch.git
+git clone https://github.com/ssakhash/Vision-Transformer-from-Scratch.git
 ```
 Run the Python script:
 ```sh
