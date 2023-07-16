@@ -1,6 +1,6 @@
 # Vision-Transformer-from-Scratch
 
-This repository contains a simple implementation of a Vision Transformer (ViT), a type of model that applies the transformer architecture (primarily used for natural language processing) to computer vision tasks. Here, we use the CIFAR-100 dataset for the demonstration.
+This repository contains an updated implementation of a Vision Transformer (ViT), a model that applies the transformer architecture (which was originally designed for natural language processing) to computer vision tasks. We demonstrate the use of the model with the CIFAR-100 dataset.
 
 ## Overview
 
@@ -11,11 +11,12 @@ The key idea behind Vision Transformers is to treat an image just like a sequenc
 The code is implemented in Python, and uses the following libraries:
 - PyTorch
 - torchvision
+- tqdm
 
 You can install the requirements via `pip`:
 
 ```sh
-pip install torch torchvision
+pip install torch torchvision tqdm
 ```
 
 ## Usage
@@ -27,12 +28,12 @@ Run the Python script:
 ```sh
 python ViT.py
 ```
-This will start the training process. The model will go through 10 epochs on the CIFAR-100 dataset and print the training loss after each epoch.
+This command initiates the training process. The model goes through 20 epochs on the CIFAR-100 dataset with data augmentation and L2 regularization. It also includes learning rate scheduling and uses the tqdm library to visualize the progress of data loading and model training. The training loss after each epoch gets displayed on the console.
 
 ## Model Configuration
 You can customize the model configuration by changing the Config class in main.py. Here are the configuration parameters:
 - 'img_size': The size of the input images (32 for CIFAR-100).
-- 'patch_size': The size of the patches that the image is divided into.
+- 'patch_size': The size of the patches the image is divided into.
 - 'num_classes': The number of classes in the dataset (100 for CIFAR-100).
 - 'dim': The dimensionality of the patch embeddings.
 - 'depth': The number of transformer blocks.
@@ -40,6 +41,7 @@ You can customize the model configuration by changing the Config class in main.p
 - 'mlp_dim': The dimensionality of the feed-forward neural network inside the transformer.
 - 'channels': The number of channels in the input images (3 for RGB images).
 - 'dropout': The dropout rate.
+- 'weight_decay': The coefficient for L2 regularization in the Adam optimizer.
 
 ## Contributing
 Contributions to this repository are welcome. You can contribute by opening an issue or by creating a pull request.
