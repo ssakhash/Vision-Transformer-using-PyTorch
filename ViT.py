@@ -7,16 +7,17 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 class Config:
-    img_size = 32
-    patch_size = 4
+    img_size = 224  # Update image size to suit pre-trained models like ResNet
+    patch_size = 16  # Update patch size
     num_classes = 100
-    dim = 128
-    depth = 8
-    heads = 16
-    mlp_dim = 256
+    dim = 2048  # Update embedding dimension to match that of CNN's output
+    depth = 12  # Increase depth for more complex datasets
+    heads = 16  # Adjust number of heads
+    mlp_dim = 3072  # Update mlp_dim
     channels = 3
     dropout = 0.1
     weight_decay = 0.01  # L2 regularization
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class TransformerBlock(nn.Module):
     def __init__(self, dim, heads, dropout, forward_expansion):
@@ -41,27 +42,32 @@ class TransformerBlock(nn.Module):
         return self.dropout(self.norm2(forward + x))
 
 class VisionTransformer(nn.Module):
-    def __init__(self, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, channels, dropout):
+    def __init__(self, config):
         super(VisionTransformer, self).__init__()
 
-        self.num_patches = (image_size // patch_size) ** 2
-        self.dim = dim
-        self.depth = depth
+        self.config = config
+        self.device = config.device
 
-        self.patch_embedding = nn.Conv2d(channels, dim, kernel_size=patch_size, stride=patch_size)
-        self.position_embedding = nn.Parameter(torch.randn(1, self.num_patches + 1, dim))
-        self.class_token = nn.Parameter(torch.randn(1, 1, dim))
+        # Load a pre-trained ResNet and remove the classification head
+        self.cnn = torchvision.models.resnet50(pretrained=True)
+        self.cnn = nn.Sequential(*list(self.cnn.children())[:-2]).to(self.device)
 
-        self.dropout = nn.Dropout(dropout)
+        self.num_patches = (config.img_size // config.patch_size) ** 2
+        self.patch_embedding = nn.Conv2d(config.dim, config.dim, kernel_size=config.patch_size, stride=config.patch_size, padding=0).to(self.device)
+        self.position_embedding = nn.Parameter(torch.randn(1, self.num_patches + 1, config.dim)).to(self.device)
+        self.class_token = nn.Parameter(torch.randn(1, 1, config.dim)).to(self.device)
+
+        self.dropout = nn.Dropout(config.dropout).to(self.device)
 
         self.transformer = nn.ModuleList([])
-        for _ in range(depth):
-            self.transformer.append(TransformerBlock(dim, heads, dropout, mlp_dim))
+        for _ in range(config.depth):
+            self.transformer.append(TransformerBlock(config.dim, config.heads, config.dropout, config.mlp_dim).to(self.device))
 
-        self.mlp_head = nn.Linear(dim, num_classes)
+        self.mlp_head = nn.Linear(config.dim, config.num_classes).to(self.device)
 
     def forward(self, x):
-        x = self.patch_embedding(x).flatten(2).transpose(1, 2)
+        x = self.cnn(x)  # Pass input through CNN feature extractor
+        x = self.patch_embedding(x).flatten(2).transpose(1, 2)  # Flatten CNN output and apply patch embedding
         batch_size = x.shape[0]
         class_token = self.class_token.expand(batch_size, -1, -1)
         x = torch.cat((class_token, x), dim=1)
@@ -75,37 +81,28 @@ class VisionTransformer(nn.Module):
         return x
 
 def main():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("GPU: ", torch.cuda.get_device_name(torch.device))
+    device = Config.device
+    print("GPU: ", torch.cuda.get_device_name(device))
 
     # Data loading and preprocessing
     transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),  # Data augmentation - random crop
+        transforms.RandomResizedCrop(Config.img_size),  # Resizing for larger image size
         transforms.RandomHorizontalFlip(),  # Data augmentation - random horizontal flip
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
     trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=100, shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True, num_workers=2)
 
-    model = VisionTransformer(
-        Config.img_size,
-        Config.patch_size,
-        Config.num_classes,
-        Config.dim,
-        Config.depth,
-        Config.heads,
-        Config.mlp_dim,
-        Config.channels,
-        Config.dropout
-    ).to(device)
+    model = VisionTransformer(Config).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=Config.weight_decay)  # Lower learning rate and added weight decay
-    scheduler = ReduceLROnPlateau(optimizer, 'min')  # New learning rate scheduler
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=Config.weight_decay)
+    scheduler = ReduceLROnPlateau(optimizer, 'min')
 
     # Training loop
     for epoch in range(20):  # Add tqdm for epoch progress
+        epoch_loss = 0
         for i, data in enumerate(tqdm(trainloader, 0)):  # Add tqdm for batch progress within each epoch
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
@@ -114,9 +111,10 @@ def main():
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+            epoch_loss += loss.item()
 
-        scheduler.step(loss)  # Updated to use ReduceLROnPlateau scheduler
-        print(f"Epoch {epoch + 1}, Loss: {np.round(loss.item(), 3)}")
+        scheduler.step(epoch_loss / len(trainloader))  # Updated to use ReduceLROnPlateau scheduler
+        print(f"Epoch {epoch + 1}, Loss: {np.round(epoch_loss / len(trainloader), 3)}")
     print('Finished Training')
 
 if __name__ == "__main__":
