@@ -1,10 +1,10 @@
-# Vision-Transformer-from-Scratch
+# Vision-Transformer-using-PyTorch
 
 This repository contains an updated implementation of a Vision Transformer (ViT), a model that applies the transformer architecture (which was originally designed for natural language processing) to computer vision tasks. We demonstrate the use of the model with the CIFAR-100 dataset.
 
 ## Overview
 
-The key idea behind Vision Transformers is to treat an image just like a sequence of tokens in a sentence. The image is broken down into fixed-size patches, which are then flattened into a sequence of 1D vectors. This sequence is then passed through a transformer encoder. The transformer's attention mechanism allows the model to weigh the contribution of each patch based on its context, or its relationship with other patches, in determining the final output.
+Vision Transformers' main concept is to handle a picture in the same way as a string of tokens in a language. A series of 1D vectors are created by flattening the image's fixed-size patches into a series of 1D vectors. A transformer encoder is then used to feed this sequence through. The model may weigh each patch's contribution depending on its context, or its relationship to other patches, to determine the output owing to the transformer's attention mechanism.
 
 ## Requirements
 
