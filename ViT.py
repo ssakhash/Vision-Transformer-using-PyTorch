@@ -7,16 +7,16 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 class Config:
-    img_size = 224  # Update image size to suit pre-trained models like ResNet
-    patch_size = 16  # Update patch size
+    img_size = 128  # Smaller image size
+    patch_size = 8  # Smaller patch size
     num_classes = 100
-    dim = 2048  # Update embedding dimension to match that of CNN's output
-    depth = 12  # Increase depth for more complex datasets
-    heads = 16  # Adjust number of heads
-    mlp_dim = 3072  # Update mlp_dim
+    dim = 1024  # Smaller dimension
+    depth = 6  # Smaller depth
+    heads = 8  # Fewer heads
+    mlp_dim = 2048  # Smaller mlp_dim
     channels = 3
     dropout = 0.1
-    weight_decay = 0.01  # L2 regularization
+    weight_decay = 0.01
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class TransformerBlock(nn.Module):
@@ -84,15 +84,14 @@ def main():
     device = Config.device
     print("GPU: ", torch.cuda.get_device_name(device))
 
-    # Data loading and preprocessing
     transform_train = transforms.Compose([
-        transforms.RandomResizedCrop(Config.img_size),  # Resizing for larger image size
-        transforms.RandomHorizontalFlip(),  # Data augmentation - random horizontal flip
+        transforms.RandomResizedCrop(Config.img_size),  # Resizing for smaller image size
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
     trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=32, shuffle=True, num_workers=2)  # Smaller batch size
 
     model = VisionTransformer(Config).to(device)
 
@@ -100,20 +99,27 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=Config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, 'min')
 
-    # Training loop
-    for epoch in range(20):  # Add tqdm for epoch progress
+    accum_gradient = 4  # Gradient accumulation steps
+
+    for epoch in range(20):
         epoch_loss = 0
-        for i, data in enumerate(tqdm(trainloader, 0)):  # Add tqdm for batch progress within each epoch
+        for i, data in enumerate(tqdm(trainloader, 0)):
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
-            optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
+
+            # Gradient accumulation
+            loss = loss / accum_gradient
             loss.backward()
-            optimizer.step()
+
+            if (i+1) % accum_gradient == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+
             epoch_loss += loss.item()
 
-        scheduler.step(epoch_loss / len(trainloader))  # Updated to use ReduceLROnPlateau scheduler
+        scheduler.step(epoch_loss / len(trainloader))
         print(f"Epoch {epoch + 1}, Loss: {np.round(epoch_loss / len(trainloader), 3)}")
     print('Finished Training')
 
