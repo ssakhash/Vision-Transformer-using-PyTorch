@@ -22,7 +22,7 @@ pip install torch torchvision tqdm
 ## Usage
 Clone this repository:
 ```sh
-git clone https://github.com/ssakhash/Vision-Transformer-from-Scratch.git
+git clone https://github.com/ssakhash/Vision-Transformer-using-PyTorch.git
 ```
 Run the Python script:
 ```sh
